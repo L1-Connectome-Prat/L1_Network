@@ -1,0 +1,1031 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L1 Connectome Viewer</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --accent:     #e94560;
+  --accent-dim: rgba(233, 69, 96, 0.18);
+  --font-sans:  "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                "Helvetica Neue", Arial, sans-serif;
+  --font-mono:  ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+                "Liberation Mono", monospace;
+}
+body {
+  font-family: var(--font-sans);
+  overflow: hidden;
+  height: 100vh;
+  display: flex;
+  transition: background 0.25s ease, color 0.25s ease;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+body.dark  { background: #1a1b2e; color: #e6e8ef; }
+body.light { background: #fafafc; color: #2a2a35; }
+
+/* ── Canvas ────────────────────────────────────────────────────────────── */
+#canvas-container {
+  flex: 1;
+  position: relative;
+}
+canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
+}
+
+/* ── Side panel ────────────────────────────────────────────────────────── */
+#panel {
+  width: 310px;
+  padding: 18px 18px 24px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: background 0.25s ease, border-color 0.25s ease;
+}
+body.dark  #panel { background: #14152a; border-left: 1px solid #262a44; }
+body.light #panel { background: #f1f2f6; border-left: 1px solid #d9dbe3; }
+
+#panel h2 {
+  font-size: 13px;
+  color: var(--accent);
+  margin-bottom: 2px;
+  text-transform: uppercase;
+  letter-spacing: 1.4px;
+  font-weight: 600;
+}
+.control-group {
+  border-radius: 8px;
+  padding: 11px 13px;
+  transition: background 0.25s ease, box-shadow 0.25s ease;
+}
+body.dark  .control-group { background: #1d1f38; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.03); }
+body.light .control-group { background: #ffffff; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+
+.control-group label {
+  display: block;
+  font-size: 10px;
+  margin-bottom: 7px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  font-weight: 500;
+}
+body.dark  .control-group label { color: #8d96b3; }
+body.light .control-group label { color: #6a6f80; }
+
+.control-group select,
+.control-group input[type="range"] {
+  width: 100%;
+  margin-bottom: 4px;
+}
+select {
+  border-radius: 5px;
+  padding: 5px 7px;
+  font-size: 12px;
+  font-family: inherit;
+  transition: background 0.25s ease, color 0.25s ease, border-color 0.25s ease;
+  cursor: pointer;
+}
+body.dark  select { background: #10112a; color: #e6e8ef; border: 1px solid #2a2d4e; }
+body.light select { background: #fff;     color: #2a2a35; border: 1px solid #c8cbd6; }
+select:hover { border-color: var(--accent); }
+
+input[type="range"] {
+  -webkit-appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+body.dark  input[type="range"] { background: #10112a; }
+body.light input[type="range"] { background: #d6d9e0; }
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 13px; height: 13px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  box-shadow: 0 0 0 3px var(--accent-dim);
+  transition: box-shadow 0.15s ease;
+}
+input[type="range"]::-webkit-slider-thumb:hover {
+  box-shadow: 0 0 0 5px var(--accent-dim);
+}
+input[type="range"]::-moz-range-thumb {
+  width: 13px; height: 13px;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  box-shadow: 0 0 0 3px var(--accent-dim);
+}
+.range-val {
+  font-size: 10.5px;
+  text-align: right;
+  font-family: var(--font-mono);
+  letter-spacing: 0.2px;
+  margin-top: 3px;
+}
+body.dark  .range-val { color: #c8d0e8; }
+body.light .range-val { color: #4a4f5c; }
+
+/* Threshold readout: slider value shown as a typable number input */
+.thresh-readout {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+.thresh-readout input[type="number"] {
+  width: 58px;
+  padding: 2px 5px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-align: right;
+  border-radius: 4px;
+  outline: none;
+  transition: background 0.2s ease, border-color 0.2s ease;
+  -moz-appearance: textfield;
+}
+.thresh-readout input[type="number"]::-webkit-inner-spin-button,
+.thresh-readout input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+body.dark  .thresh-readout input { background: #10112a; color: #e6e8ef; border: 1px solid #2a2d4e; }
+body.light .thresh-readout input { background: #fff;    color: #2a2a35; border: 1px solid #c8cbd6; }
+.thresh-readout input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-dim); }
+
+/* ── Theme toggle ──────────────────────────────────────────────────────── */
+#theme-toggle {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  transition: background 0.2s ease, transform 0.2s ease;
+  backdrop-filter: blur(6px);
+}
+#theme-toggle:hover { transform: scale(1.08); }
+body.dark  #theme-toggle { background: rgba(255,255,255,0.08); color: #ffd98a; }
+body.light #theme-toggle { background: rgba(0,0,0,0.06);      color: #3a3a45; }
+
+/* ── Tooltip ───────────────────────────────────────────────────────────── */
+#tooltip {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 9px;
+  padding: 11px 13px;
+  font-size: 11px;
+  line-height: 1.55;
+  max-width: 280px;
+  display: none;
+  z-index: 100;
+  backdrop-filter: blur(8px);
+  transition: background 0.25s ease, border-color 0.25s ease;
+}
+body.dark  #tooltip { background: rgba(20, 21, 42, 0.94); border: 1px solid #2a2d4e; box-shadow: 0 6px 24px rgba(0,0,0,0.55); }
+body.light #tooltip { background: rgba(255,255,255,0.96); border: 1px solid #d0d3dd; box-shadow: 0 6px 24px rgba(20,25,40,0.10); }
+
+#tooltip .tt-title { font-size: 13px; font-weight: 600; color: var(--accent); margin-bottom: 6px; letter-spacing: 0.2px; }
+#tooltip .tt-row { display: flex; justify-content: space-between; gap: 8px; }
+body.dark  #tooltip .tt-label { color: #8d96b3; }
+body.light #tooltip .tt-label { color: #6a6f80; }
+body.dark  #tooltip .tt-val { color: #d4daeb; font-weight: 500; font-variant-numeric: tabular-nums; }
+body.light #tooltip .tt-val { color: #2a2a35; font-weight: 500; font-variant-numeric: tabular-nums; }
+#tooltip .tt-sep { margin: 7px 0; height: 1px; }
+body.dark  #tooltip .tt-sep { background: linear-gradient(to right, transparent, #2a2d4e, transparent); }
+body.light #tooltip .tt-sep { background: linear-gradient(to right, transparent, #d0d3dd, transparent); }
+
+.tt-bar-container { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
+.tt-bar-label { width: 55px; font-size: 10px; font-variant-numeric: tabular-nums; }
+body.dark  .tt-bar-label { color: #8d96b3; }
+body.light .tt-bar-label { color: #6a6f80; }
+.tt-bar-bg { flex: 1; height: 6px; border-radius: 3px; overflow: hidden; }
+body.dark  .tt-bar-bg { background: rgba(255,255,255,0.06); }
+body.light .tt-bar-bg { background: rgba(0,0,0,0.07); }
+.tt-bar-fill { height: 100%; border-radius: 3px; transition: width 0.2s ease; }
+
+/* ── Node info panel (when clicked) ────────────────────────────────────── */
+#node-info {
+  border-radius: 8px;
+  padding: 11px 13px;
+  display: none;
+  font-size: 11px;
+  line-height: 1.65;
+  transition: background 0.25s ease, box-shadow 0.25s ease;
+}
+body.dark  #node-info { background: #1d1f38; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.03); }
+body.light #node-info { background: #ffffff; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+
+#node-info .ni-title { font-size: 13px; font-weight: 600; color: var(--accent); margin-bottom: 6px; letter-spacing: 0.2px; }
+#node-info .ni-row { display: flex; justify-content: space-between; }
+body.dark  #node-info .ni-label { color: #8d96b3; }
+body.light #node-info .ni-label { color: #6a6f80; }
+body.dark  #node-info .ni-val { color: #d4daeb; font-weight: 500; font-variant-numeric: tabular-nums; }
+body.light #node-info .ni-val { color: #2a2a35; font-weight: 500; font-variant-numeric: tabular-nums; }
+#node-info .ni-sep { margin: 6px 0; height: 1px; }
+body.dark  #node-info .ni-sep { background: linear-gradient(to right, transparent, #262a44, transparent); }
+body.light #node-info .ni-sep { background: linear-gradient(to right, transparent, #e0e3ec, transparent); }
+
+/* ── Legend ─────────────────────────────────────────────────────────────── */
+#legend {
+  border-radius: 8px;
+  padding: 11px 13px;
+  font-size: 10.5px;
+  line-height: 1.5;
+  transition: background 0.25s ease, box-shadow 0.25s ease;
+}
+body.dark  #legend { background: #1d1f38; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.03); }
+body.light #legend { background: #ffffff; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+
+#legend h3 {
+  font-size: 10px;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  font-weight: 500;
+}
+body.dark  #legend h3 { color: #8d96b3; }
+body.light #legend h3 { color: #6a6f80; }
+.legend-row { display: flex; align-items: center; gap: 7px; margin: 3px 0; }
+.legend-swatch { width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0; box-shadow: 0 0 0 1px rgba(255,255,255,0.08); }
+.legend-swatch-ring {
+  width: 11px; height: 11px; border-radius: 50%;
+  border: 1.5px solid; background: transparent; flex-shrink: 0;
+}
+kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  border-radius: 3px;
+  vertical-align: 1px;
+}
+body.dark  kbd { background: #10112a; border: 1px solid #2a2d4e; color: #c8d0e8; }
+body.light kbd { background: #f0f2f7; border: 1px solid #d0d3dd; color: #4a4f5c; }
+
+/* Scrollbar styling */
+#panel::-webkit-scrollbar { width: 8px; }
+#panel::-webkit-scrollbar-track { background: transparent; }
+body.dark  #panel::-webkit-scrollbar-thumb { background: #262a44; border-radius: 4px; }
+body.light #panel::-webkit-scrollbar-thumb { background: #d0d3dd; border-radius: 4px; }
+</style>
+</head>
+<body class="dark">
+
+<div id="canvas-container">
+  <canvas id="graph"></canvas>
+  <button id="theme-toggle" title="Toggle dark/light mode">&#9788;</button>
+  <div id="tooltip"></div>
+</div>
+
+<div id="panel">
+  <h2>L1 Connectome</h2>
+
+  <!-- Hemisphere filter -->
+  <div class="control-group">
+    <label>Origin Hemisphere</label>
+    <select id="hemi-filter">
+      <option value="both" selected>Both Hemispheres</option>
+      <option value="Right">Right Hemisphere Only</option>
+      <option value="Left">Left Hemisphere Only</option>
+    </select>
+  </div>
+
+  <!-- Focus connections filter -->
+  <div class="control-group">
+    <label>Active Node Display</label>
+    <select id="focus-filter">
+      <option value="both" selected>Inputs & Outputs</option>
+      <option value="in">Inputs Only</option>
+      <option value="out">Outputs Only</option>
+    </select>
+  </div>
+
+  <!-- Filter mode -->
+  <div class="control-group">
+    <label>Edge filter</label>
+    <select id="filter-mode">
+      <option value="nw" selected>Norm Weight (fraction of output)</option>
+      <option value="w">Raw Weight (synapse count)</option>
+    </select>
+  </div>
+
+  <!-- Threshold: slider + typed entry -->
+  <div class="control-group">
+    <label>Threshold (top %)</label>
+    <input type="range" id="thresh-slider" min="1" max="50" value="8" step="0.5">
+    <div class="range-val thresh-readout">
+      <span id="thresh-prefix">top</span>
+      <input type="number" id="thresh-num" min="1" max="50" step="0.5" value="8">
+      <span id="thresh-suffix">%</span>
+    </div>
+  </div>
+
+  <!-- Node size -->
+  <div class="control-group">
+    <label>Node size scale</label>
+    <input type="range" id="size-slider" min="0.3" max="3" value="1" step="0.1">
+  </div>
+
+  <!-- Edge opacity -->
+  <div class="control-group">
+    <label>Edge opacity</label>
+    <input type="range" id="edge-opacity" min="0.05" max="1" value="0.4" step="0.05">
+    <div class="range-val" id="edge-opacity-val">0.40</div>
+  </div>
+
+  <!-- Node info -->
+  <div id="node-info"></div>
+
+  <!-- Legend -->
+  <div id="legend"></div>
+</div>
+
+<script>
+// ── Data ────────────────────────────────────────────────────────────────────
+let DATA = null;
+
+// ── Constants ───────────────────────────────────────────────────────────────
+// Compartment palette (mirrors Scripts/network_layer_connectivity_comp.py).
+const COMP_HEX = {
+  "AL"      : "#e6194b",
+  "TR"      : "#f58231",
+  "LON"     : "#17becf",
+  "MB-CA"   : "#6baed6",
+  "MB"      : "#08306b",
+  "MBE"     : "#9ecae1",
+  "IPA"     : "#9467bd",
+  "IPLM"    : "#e377c2",
+  "IPP"     : "#54278f",
+  "SMP"     : "#bf812d",
+  "SMPal"   : "#f7d488",
+  "SLP"     : "#01665e",
+  "LAL"     : "#a50f15",
+  "VMC"     : "#33a02c",
+  "VLP"     : "#bcbd22",
+  "SEZ-VNC" : "#34495e",
+  "Mixed"   : "#a9a9a9"
+};
+// LAL-VMC is the RGB blend of LAL and VMC.
+(function() {
+  const a = COMP_HEX["LAL"], b = COMP_HEX["VMC"];
+  const ar = parseInt(a.slice(1,3),16), ag = parseInt(a.slice(3,5),16), ab = parseInt(a.slice(5,7),16);
+  const br = parseInt(b.slice(1,3),16), bg = parseInt(b.slice(3,5),16), bb = parseInt(b.slice(5,7),16);
+  const r = Math.round((ar+br)/2), g = Math.round((ag+bg)/2), bv = Math.round((ab+bb)/2);
+  COMP_HEX["LAL-VMC"] = '#' + [r,g,bv].map(x => x.toString(16).padStart(2,'0')).join('');
+})();
+const COMP_ORDER = ["AL","TR","LON","MB-CA","MB","MBE","IPA","IPLM","IPP",
+                    "SMP","SMPal","SLP","LAL","VMC","LAL-VMC","VLP","SEZ-VNC","Mixed"];
+
+// Layer palette retained for the layer chip in the tooltip / node-info panel.
+const LAYER_COLORS = [
+  '#a9a9a9','#e6194b','#4363d8','#f58231','#469990',
+  '#f032e6','#3cb44b','#000075','#42d4f4','#911eb4','#e6550d'
+];
+const MOD_COLORS = {
+  Olf:    {r:255, g:128, b:0},
+  Gust:   {r:33,  g:150, b:243},
+  Vis:    {r:51,  g:204, b:64},
+  Thermo: {r:237, g:38,  b:115}
+};
+const MOD_NAMES = {Olf:'Olfactory', Gust:'Gustatory', Vis:'Visual', Thermo:'Thermosensory'};
+
+// ── Theme ───────────────────────────────────────────────────────────────────
+let darkMode = true;
+const THEME = {
+  dark:  { bg: '#1a1b2e', outlineStroke: 'rgba(255,255,255,0.22)', outlineFill: 'rgba(255,255,255,0.025)',
+           mutedNode: [70,72,90], leftNode: [148,152,170], labelColor: 'rgba(212,218,235,0.75)' },
+  light: { bg: '#fafafc', outlineStroke: 'rgba(30,35,50,0.28)', outlineFill: 'rgba(30,35,50,0.015)',
+           mutedNode: [190,193,205], leftNode: [140,145,160], labelColor: 'rgba(50,55,70,0.65)' }
+};
+function theme() { return darkMode ? THEME.dark : THEME.light; }
+
+// ── State ───────────────────────────────────────────────────────────────────
+let nodes = [], edges = [], nodeMap = {};
+let outline = [];
+let hoveredNode = null, selectedNode = null;
+let filteredEdges = [];
+let transform = {x: 0, y: 0, scale: 1};
+let dragging = false, dragStart = {x:0, y:0}, dragTransStart = {x:0, y:0};
+
+// Canvas
+const canvas = document.getElementById('graph');
+const ctx = canvas.getContext('2d');
+const tooltip = document.getElementById('tooltip');
+
+// Controls
+const filterMode   = document.getElementById('filter-mode');
+const threshSlider = document.getElementById('thresh-slider');
+const threshNum    = document.getElementById('thresh-num');
+const threshPrefix = document.getElementById('thresh-prefix');
+const threshSuffix = document.getElementById('thresh-suffix');
+const sizeSlider   = document.getElementById('size-slider');
+const edgeOpSlider = document.getElementById('edge-opacity');
+const edgeOpVal    = document.getElementById('edge-opacity-val');
+const hemiFilter   = document.getElementById('hemi-filter');
+const focusFilter  = document.getElementById('focus-filter');
+const themeBtn     = document.getElementById('theme-toggle');
+
+// ── Init ────────────────────────────────────────────────────────────────────
+function init() {
+  const d = typeof INLINE_DATA !== 'undefined' ? INLINE_DATA : DATA;
+  if (!d) {
+    fetch('viewer_data.json').then(r => r.json()).then(j => { DATA = j; init(); });
+    return;
+  }
+
+  nodes   = d.nodes;
+  edges   = d.edges;
+  outline = d.outline || [];
+  nodeMap = {};
+  nodes.forEach(n => { nodeMap[n.id] = n; });
+
+  resize();
+  fitView();
+  filterEdges();
+  buildLegend();
+  draw();
+
+  // Events
+  hemiFilter.onchange  = () => { filterEdges(); draw(); };
+  focusFilter.onchange = () => draw();
+  filterMode.onchange = () => {
+    const mode = filterMode.value;
+    if (mode === 'nw') {
+      setThreshBounds(1, 100, 0.5, 8);
+      threshSlider.previousElementSibling.textContent = 'Threshold (top %)';
+      threshPrefix.textContent = 'top';
+      threshSuffix.textContent = '%';
+    } else {
+      let maxW = 1;
+      edges.forEach(e => { if (e.w > maxW) maxW = e.w; });
+      setThreshBounds(1, Math.ceil(maxW), 1, 5);
+      threshSlider.previousElementSibling.textContent = 'Min Weight (synapses)';
+      threshPrefix.textContent = '\u2265';   // ≥
+      threshSuffix.textContent = 'syn';
+    }
+    filterEdges();
+    draw();
+  };
+
+  threshSlider.oninput = () => {
+    threshNum.value = threshSlider.value;
+    filterEdges();
+    draw();
+  };
+
+  // Typed entry: commit on input, but clamp only on blur / Enter so the user
+  // can freely type intermediate values (e.g. erasing before retyping).
+  threshNum.oninput = () => {
+    const v = parseFloat(threshNum.value);
+    if (!Number.isFinite(v)) return;
+    threshSlider.value = v;
+    filterEdges();
+    draw();
+  };
+  threshNum.onchange = () => {
+    const min = parseFloat(threshSlider.min);
+    const max = parseFloat(threshSlider.max);
+    let v = parseFloat(threshNum.value);
+    if (!Number.isFinite(v)) v = parseFloat(threshSlider.value);
+    v = Math.min(max, Math.max(min, v));
+    threshNum.value = v;
+    threshSlider.value = v;
+    filterEdges();
+    draw();
+  };
+  threshNum.onkeydown = (e) => { if (e.key === 'Enter') threshNum.blur(); };
+
+  sizeSlider.oninput   = () => draw();
+  edgeOpSlider.oninput = () => { edgeOpVal.textContent = parseFloat(edgeOpSlider.value).toFixed(2); draw(); };
+  canvas.onmousemove   = onMouseMove;
+  canvas.onmousedown   = onMouseDown;
+  canvas.onmouseup     = onMouseUp;
+  canvas.onmouseleave  = () => { dragging = false; hoveredNode = null; tooltip.style.display = 'none'; draw(); };
+  canvas.onwheel       = onWheel;
+  canvas.ondblclick    = onDblClick;
+  window.onresize      = () => { resize(); draw(); };
+
+  themeBtn.onclick = () => {
+    darkMode = !darkMode;
+    document.body.className = darkMode ? 'dark' : 'light';
+    themeBtn.innerHTML = darkMode ? '&#9788;' : '&#9789;';
+    buildLegend();
+    draw();
+  };
+}
+
+function resize() {
+  const r = window.devicePixelRatio || 1;
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width  = rect.width * r;
+  canvas.height = rect.height * r;
+  canvas.style.width  = rect.width + 'px';
+  canvas.style.height = rect.height + 'px';
+  ctx.setTransform(r, 0, 0, r, 0, 0);
+}
+
+function fitView() {
+  const rect = canvas.parentElement.getBoundingClientRect();
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  nodes.forEach(n => {
+    if (n.x < minX) minX = n.x;
+    if (n.x > maxX) maxX = n.x;
+    if (n.y < minY) minY = n.y;
+    if (n.y > maxY) maxY = n.y;
+  });
+  const dx = maxX - minX || 1;
+  const dy = maxY - minY || 1;
+  const pad = 40;
+  const sx = (rect.width  - pad * 2) / dx;
+  const sy = (rect.height - pad * 2) / dy;
+  transform.scale = Math.min(sx, sy);
+  transform.x = pad - minX * transform.scale + (rect.width  - pad*2 - dx * transform.scale) / 2;
+  transform.y = pad - minY * transform.scale + (rect.height - pad*2 - dy * transform.scale) / 2;
+}
+
+// ── Coordinate transforms ───────────────────────────────────────────────────
+function toScreen(wx, wy) {
+  return { x: wx * transform.scale + transform.x,
+           y: wy * transform.scale + transform.y };
+}
+
+// Keep slider and number input bounds in lockstep; pick a sensible value
+// if the current one now falls outside the new range.
+function setThreshBounds(min, max, step, fallback) {
+  threshSlider.min = min;
+  threshSlider.max = max;
+  threshSlider.step = step;
+  threshNum.min = min;
+  threshNum.max = max;
+  threshNum.step = step;
+  let v = parseFloat(threshSlider.value);
+  if (!Number.isFinite(v) || v < min || v > max) v = fallback;
+  threshSlider.value = v;
+  threshNum.value    = v;
+}
+
+// ── Edge filtering ──────────────────────────────────────────────────────────
+function filterEdges() {
+  const hemiOpt = hemiFilter.value;
+  let baseEdges = edges;
+  if (hemiOpt !== 'both') {
+    baseEdges = edges.filter(e => {
+      const sn = nodeMap[e.s];
+      return sn && sn.hemi === hemiOpt;
+    });
+  }
+
+  const mode = filterMode.value;
+  if (mode === 'nw') {
+    const pct  = parseFloat(threshSlider.value) / 100;
+    const sorted = baseEdges.slice().sort((a, b) => b.nw - a.nw);
+    const n = Math.max(1, Math.floor(sorted.length * pct));
+    filteredEdges = sorted.slice(0, n);
+  } else {
+    const minW = parseInt(threshSlider.value);
+    filteredEdges = baseEdges.filter(e => e.w >= minW);
+  }
+}
+
+// ── Node radius ─────────────────────────────────────────────────────────────
+function nodeRadius(n) {
+  const sc = parseFloat(sizeSlider.value);
+  return (2.5 + Math.sqrt(n.size) * 1.2) * sc;
+}
+
+// ── Hit test ────────────────────────────────────────────────────────────────
+function hitTest(sx, sy) {
+  for (let i = nodes.length - 1; i >= 0; i--) {
+    const n = nodes[i];
+    const p = toScreen(n.x, n.y);
+    const r = nodeRadius(n) + 2;
+    const dx = sx - p.x, dy = sy - p.y;
+    if (dx*dx + dy*dy <= r*r) return n;
+  }
+  return null;
+}
+
+// ── Drawing ─────────────────────────────────────────────────────────────────
+function draw() {
+  const rect = canvas.parentElement.getBoundingClientRect();
+  const W = rect.width, H = rect.height;
+  const t = theme();
+
+  // Clear with background color
+  ctx.fillStyle = t.bg;
+  ctx.fillRect(0, 0, W, H);
+
+  const baseEdgeOp = parseFloat(edgeOpSlider.value);
+  const focus = hoveredNode || selectedNode;
+  const focusOpt = focusFilter.value;
+
+  // ── Neuropil outline ───────────────────────────────────────────────────
+  if (outline.length > 2) {
+    ctx.beginPath();
+    const p0 = toScreen(outline[0][0], outline[0][1]);
+    ctx.moveTo(p0.x, p0.y);
+    for (let i = 1; i < outline.length; i++) {
+      const p = toScreen(outline[i][0], outline[i][1]);
+      ctx.lineTo(p.x, p.y);
+    }
+    ctx.closePath();
+    ctx.fillStyle = t.outlineFill;
+    ctx.fill();
+    ctx.strokeStyle = t.outlineStroke;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+
+  // Pre-compute connected edges for focus node
+  let focusOut = new Set(), focusIn = new Set(), focusNeighbors = new Set();
+  let focusEdges = [];
+  if (focus) {
+    const hemiOpt = hemiFilter.value;
+    edges.forEach(e => {
+      const sn = nodeMap[e.s];
+      if (hemiOpt !== 'both' && sn && sn.hemi !== hemiOpt) return;
+
+      const isSrc = e.s === focus.id;
+      const isTgt = e.t === focus.id;
+
+      if (isSrc && (focusOpt === 'both' || focusOpt === 'out')) {
+        focusOut.add(e.t);
+        focusNeighbors.add(e.t);
+        focusEdges.push(e);
+      }
+      if (isTgt && (focusOpt === 'both' || focusOpt === 'in')) {
+        focusIn.add(e.s);
+        focusNeighbors.add(e.s);
+        focusEdges.push(e);
+      }
+    });
+  }
+
+  // Midline
+  let midX = 0, cnt = 0;
+  nodes.forEach(n => { midX += n.x; cnt++; });
+  midX /= cnt;
+
+  // ── Draw edges ─────────────────────────────────────────────────────────
+  if (!focus) {
+    filteredEdges.forEach(e => {
+      const sn = nodeMap[e.s], tn = nodeMap[e.t];
+      if (!sn || !tn) return;
+      drawEdge(sn, tn, e, baseEdgeOp * 0.7, midX, false);
+    });
+  } else {
+    focusEdges.forEach(e => {
+      const sn = nodeMap[e.s], tn = nodeMap[e.t];
+      if (!sn || !tn) return;
+      const isOut = e.s === focus.id;
+      drawEdge(sn, tn, e, 0.8, midX, true, isOut);
+    });
+  }
+
+  // ── Draw nodes ─────────────────────────────────────────────────────────
+  nodes.forEach(n => {
+    const p = toScreen(n.x, n.y);
+    const r = nodeRadius(n);
+    const isFocus    = focus && n.id === focus.id;
+    const isNeighbor = focus && focusNeighbors.has(n.id);
+    const muted      = focus && !isFocus && !isNeighbor;
+
+    // Halo (fragment outline: Dendrite = solid, Axon = dashed, Neuron = none)
+    const isLeft = n.hemi === 'Left';
+    const drawHalo = !muted && !isLeft &&
+                     (n.fragment === 'Dendrite' || n.fragment === 'Axon');
+    if (drawHalo) {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r + 1.2, 0, Math.PI * 2);
+      const haloRGB   = darkMode ? '255,255,255' : '0,0,0';
+      const haloAlpha = isFocus ? 1.0 : 0.85;
+      ctx.strokeStyle = `rgba(${haloRGB},${haloAlpha})`;
+      ctx.lineWidth   = isFocus ? 1.6 : 0.9;
+      ctx.setLineDash(n.fragment === 'Axon' ? [3, 2] : []);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // Fill (compartment color)
+    const cc = hexToRgb(COMP_HEX[n.comp] || '#888888');
+    let fillR, fillG, fillB, fillA;
+
+    if (muted) {
+      const m = t.mutedNode;
+      fillR = m[0]; fillG = m[1]; fillB = m[2];
+      fillA = 0.15;
+    } else if (isLeft) {
+      const l = t.leftNode;
+      fillR = l[0]; fillG = l[1]; fillB = l[2];
+      fillA = 0.5;
+    } else {
+      fillR = cc.r; fillG = cc.g; fillB = cc.b;
+      fillA = isFocus ? 1.0 : n.alpha;
+    }
+
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(${fillR},${fillG},${fillB},${fillA})`;
+    ctx.fill();
+
+    // Label for focused/neighbor nodes
+    if (isFocus || (isNeighbor && transform.scale > 2)) {
+      ctx.font = `${isFocus ? 'bold ' : ''}10px sans-serif`;
+      ctx.fillStyle = isFocus ? (darkMode ? '#ffffff' : '#000') : (darkMode ? '#ccd6f6' : '#333');
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText(n.group, p.x, p.y - r - 3);
+    }
+  });
+
+  // Zoomed-in labels for all right-hemi nodes
+  if (!focus && transform.scale > 5) {
+    ctx.font = '8px sans-serif';
+    ctx.fillStyle = t.labelColor;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    nodes.forEach(n => {
+      if (n.hemi === 'Left') return;
+      const p = toScreen(n.x, n.y);
+      ctx.fillText(n.group, p.x, p.y);
+    });
+  }
+}
+
+function drawEdge(sn, tn, e, alpha, midX, isFocusMode, isOutgoing) {
+  const sp = toScreen(sn.x, sn.y);
+  const tp = toScreen(tn.x, tn.y);
+
+  const midScreen = toScreen(midX, 0).x;
+  const sign = sp.x > midScreen ? -1 : 1;
+
+  const mx = (sp.x + tp.x) / 2;
+  const my = (sp.y + tp.y) / 2;
+  const dx = tp.x - sp.x, dy = tp.y - sp.y;
+  const cpx = mx - dy * 0.2 * sign;
+  const cpy = my + dx * 0.2 * sign;
+
+  const lc = hexToRgb(COMP_HEX[sn.comp] || '#888888');
+  const lw = 0.3 + Math.log1p(e.w) * 0.3;
+
+  let edgeAlpha = alpha;
+  if (isFocusMode) {
+    edgeAlpha = isOutgoing ? 0.85 : 0.5;
+  }
+
+  ctx.beginPath();
+  ctx.moveTo(sp.x, sp.y);
+  ctx.quadraticCurveTo(cpx, cpy, tp.x, tp.y);
+  ctx.strokeStyle = `rgba(${lc.r},${lc.g},${lc.b},${edgeAlpha})`;
+  ctx.lineWidth = lw;
+  ctx.lineCap = 'round';
+  ctx.stroke();
+
+  // Arrowhead
+  if (transform.scale > 1.5 || isFocusMode) {
+    const t = 0.95;
+    const ax = (1-t)*(1-t)*sp.x + 2*(1-t)*t*cpx + t*t*tp.x;
+    const ay = (1-t)*(1-t)*sp.y + 2*(1-t)*t*cpy + t*t*tp.y;
+    const tang_x = 2*(1-t)*(cpx-sp.x) + 2*t*(tp.x-cpx);
+    const tang_y = 2*(1-t)*(cpy-sp.y) + 2*t*(tp.y-cpy);
+    const angle = Math.atan2(tang_y, tang_x);
+    const aLen = isFocusMode ? 6 : 4;
+
+    ctx.beginPath();
+    ctx.moveTo(tp.x, tp.y);
+    ctx.lineTo(tp.x - aLen * Math.cos(angle - 0.35), tp.y - aLen * Math.sin(angle - 0.35));
+    ctx.lineTo(tp.x - aLen * Math.cos(angle + 0.35), tp.y - aLen * Math.sin(angle + 0.35));
+    ctx.closePath();
+    ctx.fillStyle = `rgba(${lc.r},${lc.g},${lc.b},${edgeAlpha})`;
+    ctx.fill();
+  }
+}
+
+// ── Mouse events ────────────────────────────────────────────────────────────
+function onMouseMove(evt) {
+  const rect = canvas.getBoundingClientRect();
+  const sx = evt.clientX - rect.left;
+  const sy = evt.clientY - rect.top;
+
+  if (dragging) {
+    transform.x = dragTransStart.x + (evt.clientX - dragStart.x);
+    transform.y = dragTransStart.y + (evt.clientY - dragStart.y);
+    draw();
+    return;
+  }
+
+  const hit = hitTest(sx, sy);
+  if (hit !== hoveredNode) {
+    hoveredNode = hit;
+    draw();
+  }
+
+  if (hit) {
+    showTooltip(hit, evt.clientX, evt.clientY);
+  } else {
+    tooltip.style.display = 'none';
+  }
+}
+
+function onMouseDown(evt) {
+  const rect = canvas.getBoundingClientRect();
+  const sx = evt.clientX - rect.left;
+  const sy = evt.clientY - rect.top;
+  const hit = hitTest(sx, sy);
+
+  if (hit) {
+    selectedNode = (selectedNode && selectedNode.id === hit.id) ? null : hit;
+    showNodeInfo(selectedNode);
+    draw();
+  } else {
+    dragging = true;
+    dragStart = {x: evt.clientX, y: evt.clientY};
+    dragTransStart = {x: transform.x, y: transform.y};
+    canvas.style.cursor = 'grabbing';
+  }
+}
+
+function onMouseUp() {
+  dragging = false;
+  canvas.style.cursor = 'crosshair';
+}
+
+function onWheel(evt) {
+  evt.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const sx = evt.clientX - rect.left;
+  const sy = evt.clientY - rect.top;
+
+  const factor = evt.deltaY < 0 ? 1.12 : 1 / 1.12;
+  transform.x = sx - (sx - transform.x) * factor;
+  transform.y = sy - (sy - transform.y) * factor;
+  transform.scale *= factor;
+  draw();
+}
+
+function onDblClick() {
+  selectedNode = null;
+  hoveredNode = null;
+  tooltip.style.display = 'none';
+  showNodeInfo(null);
+  fitView();
+  draw();
+}
+
+// ── Tooltip ─────────────────────────────────────────────────────────────────
+function showTooltip(n, cx, cy) {
+  const mc = MOD_COLORS[n.mod] || {r:128,g:128,b:128};
+  const modName = MOD_NAMES[n.mod] || n.mod;
+
+  const drives = [
+    {label: 'Olf',    val: n.olf_drive,   c: MOD_COLORS.Olf},
+    {label: 'Gust',   val: n.gust_drive,  c: MOD_COLORS.Gust},
+    {label: 'Vis',    val: n.vis_drive,    c: MOD_COLORS.Vis},
+    {label: 'Thermo', val: n.thermo_drive, c: MOD_COLORS.Thermo},
+  ];
+  const maxDrive = Math.max(...drives.map(d => d.val), 0.001);
+
+  let barsHtml = drives.map(d => {
+    const pct = (d.val / maxDrive * 100).toFixed(1);
+    return `<div class="tt-bar-container">
+      <span class="tt-bar-label">${d.label}</span>
+      <div class="tt-bar-bg"><div class="tt-bar-fill" style="width:${pct}%;background:rgba(${d.c.r},${d.c.g},${d.c.b},0.8)"></div></div>
+      <span class="tt-bar-label" style="width:35px;text-align:right">${d.val.toFixed(2)}</span>
+    </div>`;
+  }).join('');
+
+  const compColor = COMP_HEX[n.comp] || '#888888';
+
+  tooltip.innerHTML = `
+    <div class="tt-title">${n.group} <span style="font-size:10px;color:#8892b0">(${n.hemi})</span></div>
+    <div class="tt-row"><span class="tt-label">Compartment</span><span class="tt-val" style="color:${compColor}">${n.comp}</span></div>
+    <div class="tt-row"><span class="tt-label">Fragment</span><span class="tt-val">${n.fragment}</span></div>
+    <div class="tt-row"><span class="tt-label">Layer</span><span class="tt-val" style="color:${LAYER_COLORS[n.layer]}">${n.layer}</span></div>
+    <div class="tt-row"><span class="tt-label">Modality</span><span class="tt-val" style="color:rgb(${mc.r},${mc.g},${mc.b})">${modName}</span></div>
+    <div class="tt-row"><span class="tt-label">Neurons</span><span class="tt-val">${n.size}</span></div>
+    <div class="tt-row"><span class="tt-label">Role</span><span class="tt-val">${(n.role||'').replace(/_/g,' ')}</span></div>
+    <div class="tt-sep"></div>
+    <div class="tt-row"><span class="tt-label">Integration</span><span class="tt-val">${n.integration.toFixed(3)}</span></div>
+    <div class="tt-row"><span class="tt-label">Final Score</span><span class="tt-val">${n.final_score.toFixed(3)}</span></div>
+    <div class="tt-row"><span class="tt-label">Flow Ratio</span><span class="tt-val">${n.flow_ratio.toFixed(3)}</span></div>
+    <div class="tt-row"><span class="tt-label">Self-conn</span><span class="tt-val">${n.self_w.toFixed(4)}</span></div>
+    <div class="tt-sep"></div>
+    <div style="font-size:10px;margin-bottom:3px" class="tt-label">PPR Drive</div>
+    ${barsHtml}
+  `;
+
+  const rect = canvas.parentElement.getBoundingClientRect();
+  let tx = cx - rect.left + 15;
+  let ty = cy - rect.top + 15;
+  tooltip.style.display = 'block';
+  if (tx + 280 > rect.width) tx = cx - rect.left - 290;
+  if (ty + tooltip.offsetHeight > rect.height) ty = rect.height - tooltip.offsetHeight - 10;
+  tooltip.style.left = tx + 'px';
+  tooltip.style.top  = ty + 'px';
+}
+
+// ── Node info panel ─────────────────────────────────────────────────────────
+function showNodeInfo(n) {
+  const el = document.getElementById('node-info');
+  if (!n) { el.style.display = 'none'; return; }
+
+  const mc = MOD_COLORS[n.mod] || {r:128,g:128,b:128};
+  const modName = MOD_NAMES[n.mod] || n.mod;
+
+  let outCount = 0, inCount = 0, outW = 0, inW = 0;
+  edges.forEach(e => {
+    if (e.s === n.id) { outCount++; outW += e.w; }
+    if (e.t === n.id) { inCount++;  inW  += e.w; }
+  });
+
+  const enrs = [
+    {label:'Olf',    val:n.olf_enr,    c:MOD_COLORS.Olf},
+    {label:'Gust',   val:n.gust_enr,   c:MOD_COLORS.Gust},
+    {label:'Vis',    val:n.vis_enr,     c:MOD_COLORS.Vis},
+    {label:'Thermo', val:n.thermo_enr,  c:MOD_COLORS.Thermo},
+  ];
+
+  let enrHtml = enrs.map(e => {
+    const sign = e.val >= 0 ? '+' : '';
+    return `<div class="ni-row"><span class="ni-label" style="color:rgb(${e.c.r},${e.c.g},${e.c.b})">${e.label}</span><span class="ni-val">${sign}${e.val.toFixed(2)}x</span></div>`;
+  }).join('');
+
+  const compColor = COMP_HEX[n.comp] || '#888888';
+
+  el.innerHTML = `
+    <div class="ni-title">${n.group}</div>
+    <div class="ni-row"><span class="ni-label">Hemisphere</span><span class="ni-val">${n.hemi}</span></div>
+    <div class="ni-row"><span class="ni-label">Compartment</span><span class="ni-val" style="color:${compColor}">${n.comp}</span></div>
+    <div class="ni-row"><span class="ni-label">Fragment</span><span class="ni-val">${n.fragment}</span></div>
+    <div class="ni-row"><span class="ni-label">Layer</span><span class="ni-val" style="color:${LAYER_COLORS[n.layer]}">${n.layer}</span></div>
+    <div class="ni-row"><span class="ni-label">Modality</span><span class="ni-val" style="color:rgb(${mc.r},${mc.g},${mc.b})">${modName}</span></div>
+    <div class="ni-row"><span class="ni-label">Neurons</span><span class="ni-val">${n.size}</span></div>
+    <div class="ni-row"><span class="ni-label">Role</span><span class="ni-val">${(n.role||'').replace(/_/g,' ')}</span></div>
+    <div class="ni-sep"></div>
+    <div class="ni-row"><span class="ni-label">Integration</span><span class="ni-val">${n.integration.toFixed(3)}</span></div>
+    <div class="ni-row"><span class="ni-label">Final Score</span><span class="ni-val">${n.final_score.toFixed(3)}</span></div>
+    <div class="ni-row"><span class="ni-label">Flow Ratio</span><span class="ni-val">${n.flow_ratio.toFixed(3)}</span></div>
+    <div class="ni-row"><span class="ni-label">N_eff in/out</span><span class="ni-val">${n.neff_in.toFixed(1)} / ${n.neff_out.toFixed(1)}</span></div>
+    <div class="ni-row"><span class="ni-label">Self-conn</span><span class="ni-val">${n.self_w.toFixed(4)}</span></div>
+    <div class="ni-sep"></div>
+    <div class="ni-row"><span class="ni-label">Out edges</span><span class="ni-val">${outCount} (${outW.toFixed(0)} syn)</span></div>
+    <div class="ni-row"><span class="ni-label">In edges</span><span class="ni-val">${inCount} (${inW.toFixed(0)} syn)</span></div>
+    <div class="ni-sep"></div>
+    <div style="font-size:10px;margin-bottom:3px" class="ni-label">Enrichment</div>
+    ${enrHtml}
+  `;
+  el.style.display = 'block';
+}
+
+// ── Legend ───────────────────────────────────────────────────────────────────
+function buildLegend() {
+  const el = document.getElementById('legend');
+  let html = '<h3>Compartment</h3>';
+  COMP_ORDER.forEach(c => {
+    html += `<div class="legend-row"><div class="legend-swatch" style="background:${COMP_HEX[c]}"></div><span>${c}</span></div>`;
+  });
+  html += '<h3 style="margin-top:8px">Fragment (halo)</h3>';
+  const haloEdge = darkMode ? '#ffffff' : '#000000';
+  html += `<div class="legend-row"><div class="legend-swatch-ring" style="border-color:${haloEdge};border-style:solid"></div><span>Dendrite (solid)</span></div>`;
+  html += `<div class="legend-row"><div class="legend-swatch-ring" style="border-color:${haloEdge};border-style:dashed"></div><span>Axon (dashed)</span></div>`;
+  html += `<div class="legend-row"><div class="legend-swatch-ring" style="border-color:transparent"></div><span>Neuron (none)</span></div>`;
+  html += '<h3 style="margin-top:10px">Controls</h3>';
+  html += '<div style="font-size:10.5px;line-height:1.85" class="tt-label">';
+  html += '<kbd>scroll</kbd> zoom<br>';
+  html += '<kbd>drag</kbd> pan<br>';
+  html += '<kbd>click</kbd> pin node info<br>';
+  html += '<kbd>hover</kbd> highlight links<br>';
+  html += '<kbd>dbl-click</kbd> reset view';
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+// ── Utils ───────────────────────────────────────────────────────────────────
+function hexToRgb(hex) {
+  const r = parseInt(hex.slice(1,3), 16);
+  const g = parseInt(hex.slice(3,5), 16);
+  const b = parseInt(hex.slice(5,7), 16);
+  return {r, g, b};
+}
+
+// ── Start ────────────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>
