@@ -815,171 +815,173 @@ plt.savefig(f"{folder}/Figure_05_Supplementary_Signal-Flow-Integration_ECDF.pdf"
             bbox_inches = "tight")
 
 #------------------------------------------------------------------------------
+# GROUP ORDERINGS (shared by the stacked-bar and enrichment figures)
+# Sensory groups g001-g018 are always kept together, in numerical order.
+SENSORY_MAX = 18
+
+def order_by_number(df):
+    """Plain numerical group order (g001, g002, ...)."""
+    return df.sort_values("Group").reset_index(drop = True)
+
+
+def order_by_score(df):
+    """Sensory groups (g001-g018) first in numerical order, the rest by Final_Score."""
+    is_sensory = df["Group"].str[1:].astype(int) <= SENSORY_MAX
+    return pd.concat([df[is_sensory].sort_values("Group"),
+                      df[~is_sensory].sort_values("Final_Score")],
+                     ignore_index = True)
+
+
+#------------------------------------------------------------------------------
 # FIGURE STACKED BARS
 senses = ["Olfactory", "Gustatory", "Visual", "Thermosensory"]
 drive_cols = ["Olf_Mean_Drive", "Gust_Mean_Drive", "Vis_Mean_Drive", "Thermo_Mean_Drive"]
 
-# Plotting DataFrame
-bar_df = group_means[["Group"] + drive_cols].copy()
+# Row-normalized drive proportions, carrying Group + Final_Score for ordering
+drive_norm = group_means[["Group", "Final_Score"] + drive_cols].copy()
+row_sums   = drive_norm[drive_cols].sum(axis = 1) + 1e-12
+drive_norm[drive_cols] = drive_norm[drive_cols].div(row_sums, axis = 0)
 
-# Normalize rows to 1.0 (100%) to create proper stacked proportions
-row_sums = bar_df[drive_cols].sum(axis = 1) + 1e-12
-for col in drive_cols:
-    bar_df[col] = bar_df[col] / row_sums
 
-# Sort by Group Number
-bar_df["Sort_Key"] = group_means["Group"]
-bar_df = bar_df.sort_values(by = "Sort_Key").reset_index(drop = True)
-bar_df = bar_df.drop(columns = ["Sort_Key"])
+def plot_drive_stacked(ordered, save_path):
+    """
+    Stacked per-modality drive bars, 80 groups per row over three rows.
 
-# Rename columns to match the cmap dictionary keys for easy plotting
-bar_df.columns = ["Group"] + senses
+    ordered : DataFrame already sorted into the desired x-axis order, with a
+              "Group" column and the four normalized `drive_cols`.
+    """
+    # Drop helper columns and label drive cols with their sense for the legend
+    bar_df = ordered[["Group"] + drive_cols].reset_index(drop = True)
+    bar_df.columns = ["Group"] + senses
 
-#--------------------------------------
-# Plot
-fig, ax = plt.subplots(figsize = (8.5, 9), nrows = 3, ncols = 1)
-plt.subplots_adjust(hspace = 0.4)
+    color_list = [cmap[sense] for sense in senses]
 
-# Map your specific colors to the exact column names
-color_list = [cmap[sense] for sense in senses]
+    fig, ax = plt.subplots(figsize = (8.5, 9), nrows = 3, ncols = 1)
+    plt.subplots_adjust(hspace = 0.4)
 
-# Chunks of 80
-chunk_size = 80
-for i, a in enumerate(ax):
-    start_idx = i * chunk_size
-    end_idx = start_idx + chunk_size
-    
-    # Get the chunk
-    chunk = bar_df.iloc[start_idx:end_idx]
+    chunk_size = 80
+    for i, a in enumerate(ax):
+        chunk = bar_df.iloc[i * chunk_size : (i + 1) * chunk_size]
 
-    # Set Group as index so pandas plots the labels on the x-axis automatically
-    chunk_plot = chunk.set_index("Group")
-    
-    # Plot the stacked bar
-    chunk_plot.plot(kind    = "bar", 
-                    stacked = True, 
-                    ax      = a, 
-                    color   = color_list, 
-                    width   = 0.85, 
-                    edgecolor = "none")
-    
-    # Clean up the aesthetics
-    sns.despine(ax = a, top = True, right = True, left = True)
-    # Ticks
-    a.tick_params(
-        axis      = "both",
-        which     = "major",
-        color     = "black",
-        labelsize = tick_fontsize,
-        length    = 1.5,
-        width     = 0.5,
-        pad       = 1.5)
-    a.tick_params(axis = "x", rotation = 90)
-    # Limit
-    a.set_xlim(-0.675, 79.675)
-    
-    # Tweaks
-    a.set_ylim(0, 1.0)
-    a.set_ylabel("Proportion of Drive", fontsize = label_fontsize)
-    a.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
+        # Set Group as index so pandas labels the x-axis automatically
+        chunk.set_index("Group").plot(kind      = "bar",
+                                      stacked   = True,
+                                      ax        = a,
+                                      color     = color_list,
+                                      width     = 0.85,
+                                      edgecolor = "none")
 
-    # No X-label
-    a.set_xlabel("")
-    
-    # Fix the Legend (Only put it on the top row to save space)
-    if i == 0:
-        a.legend(title           = "Sensory Modality", 
-                  bbox_to_anchor = (1.01, 1), 
-                  fontsize       = tick_fontsize,
-                  title_fontsize = tick_fontsize,
-                  loc            = "upper left", 
-                  frameon        = False)
-    else:
-        a.get_legend().remove()
+        # Aesthetics
+        sns.despine(ax = a, top = True, right = True, left = True)
+        a.tick_params(axis = "both", which = "major", color = "black",
+                      labelsize = tick_fontsize, length = 1.5, width = 0.5,
+                      pad = 1.5)
+        a.tick_params(axis = "x", rotation = 90)
+        a.set_xlim(-0.675, 79.675)
+        a.set_ylim(0, 1.0)
+        a.set_ylabel("Proportion of Drive", fontsize = label_fontsize)
+        a.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
+        a.set_xlabel("")
 
-# Save figure
-plt.savefig(f"{folder}/Figure_05_Supplementary_Signal-Drive-Stacked.pdf",
-            dpi = 1200,
-            bbox_inches = "tight")
+        # Legend only on the top row to save space
+        if i == 0:
+            a.legend(title          = "Sensory Modality",
+                     bbox_to_anchor = (1.01, 1),
+                     fontsize       = tick_fontsize,
+                     title_fontsize = tick_fontsize,
+                     loc            = "upper left",
+                     frameon        = False)
+        else:
+            a.get_legend().remove()
+
+    plt.savefig(save_path, dpi = 1200, bbox_inches = "tight")
+    plt.close(fig)
+
+
+# (1) Group-number order
+plot_drive_stacked(
+    order_by_number(drive_norm),
+    f"{folder}/Figure_05_Supplementary_Signal-Drive-Stacked.pdf")
+
+# (2) Sensory groups first, the rest by Final_Score
+plot_drive_stacked(
+    order_by_score(drive_norm),
+    f"{folder}/Figure_05_Supplementary_Signal-Drive-Stacked-Score-Ordered.pdf")
 
 #------------------------------------------------------------------------------
-# Enrichment
-enrichment = group_means[["Group",
-                            "Olf_Enrichment", 
-                            "Gust_Enrichment", 
-                            "Vis_Enrichment", 
-                            "Thermo_Enrichment"]]
-enrichment.set_index("Group", inplace = True)
-enrichment = enrichment.T
+# FIGURE MODALITY ENRICHMENT
+enrich_cols = ["Olf_Enrichment", "Gust_Enrichment", "Vis_Enrichment", "Thermo_Enrichment"]
 
-# Figure
-fig, ax = plt.subplots(figsize = (8.5, 3), nrows = 3, ncols = 1)
-plt.subplots_adjust(hspace = 0.4)
+# Enrichment values, carrying Group + Final_Score for ordering
+enrich_df = group_means[["Group", "Final_Score"] + enrich_cols].copy()
 
-# Chunks of 80
-chunk_size = 80
-for i, a in enumerate(ax):
-    start_idx = i * chunk_size
-    end_idx = start_idx + chunk_size
-    
-    # Get the chunk
-    chunk = enrichment.iloc[:, start_idx:end_idx]
-    
-    # Heatmap
-    sns.heatmap(chunk,
-                ax = a, 
-                cmap = "vlag",
-                center = 0,  
-                vmax = 2,
-                vmin = -2,
-                square = True,
-                linewidth = 0.25,
-                xticklabels = True,
-                yticklabels = True,
-                cbar_kws = dict(label  = "Enrichment",
-                                shrink = 0.45,
-                                aspect = 5,
-                                pad    = 0.02,
-                                extend = "both"))  
 
-    # Axes cleanup
-    cbar_axes = a.figure.axes[-1]
-    cbar_axes.tick_params(
-        axis      = "both",
-        which     = "major",
-        color     = "black",
-        labelsize = tick_fontsize - 2,
-        length    = 0.5,
-        width     = 0.15,
-        pad       = 1.5)
-    # Label
-    cbar_axes.set_ylabel("Enrichment", fontsize = tick_fontsize - 2)
-    
-    # Ticks
-    a.tick_params(
-        axis      = "both",
-        which     = "major",
-        color     = "black",
-        labelsize = tick_fontsize - 1,
-        length    = 1.5,
-        width     = 0.5,
-        pad       = 1.5)
-    a.tick_params(axis = "x", rotation = 90)
-    # Limit
-    a.set_xlim(-0.675, 80.675)
-    
-    # Tweaks
-    a.set_ylabel("", fontsize = label_fontsize)
-    a.set_yticklabels(["Olfactory", "Gustatory", "Visual", "Thermosensory"],
-                      fontsize = tick_fontsize - 1)
+def plot_enrichment(ordered, save_path):
+    """
+    Per-modality enrichment heatmap, 80 groups per row over three rows.
 
-    # No X-label
-    a.set_xlabel("")
+    ordered : DataFrame already sorted into the desired x-axis order, with a
+              "Group" column and the four `enrich_cols`.
+    """
+    # Groups as columns, modalities as rows
+    enrichment = ordered.set_index("Group")[enrich_cols].T
 
-# Save figure
-plt.savefig(f"{folder}/Figure_05_Supplementary_Modality-Enrichment.pdf",
-            dpi = 1200,
-            bbox_inches = "tight")
+    fig, ax = plt.subplots(figsize = (8.5, 3), nrows = 3, ncols = 1)
+    plt.subplots_adjust(hspace = 0.4)
+
+    chunk_size = 80
+    for i, a in enumerate(ax):
+        chunk = enrichment.iloc[:, i * chunk_size : (i + 1) * chunk_size]
+
+        # Heatmap
+        sns.heatmap(chunk,
+                    ax = a,
+                    cmap = "vlag",
+                    center = 0,
+                    vmax = 2,
+                    vmin = -2,
+                    square = True,
+                    linewidth = 0.25,
+                    xticklabels = True,
+                    yticklabels = True,
+                    cbar_kws = dict(label  = "Enrichment",
+                                    shrink = 0.45,
+                                    aspect = 5,
+                                    pad    = 0.02,
+                                    extend = "both"))
+
+        # Colorbar cleanup
+        cbar_axes = a.figure.axes[-1]
+        cbar_axes.tick_params(axis = "both", which = "major", color = "black",
+                              labelsize = tick_fontsize - 2, length = 0.5,
+                              width = 0.15, pad = 1.5)
+        cbar_axes.set_ylabel("Enrichment", fontsize = tick_fontsize - 2)
+
+        # Ticks
+        a.tick_params(axis = "both", which = "major", color = "black",
+                      labelsize = tick_fontsize - 1, length = 1.5, width = 0.5,
+                      pad = 1.5)
+        a.tick_params(axis = "x", rotation = 90)
+        a.set_xlim(-0.675, 80.675)
+
+        # Tweaks
+        a.set_ylabel("", fontsize = label_fontsize)
+        a.set_yticklabels(senses, fontsize = tick_fontsize - 1)
+        a.set_xlabel("")
+
+    plt.savefig(save_path, dpi = 1200, bbox_inches = "tight")
+    plt.close(fig)
+
+
+# (1) Group-number order
+plot_enrichment(
+    order_by_number(enrich_df),
+    f"{folder}/Figure_05_Supplementary_Modality-Enrichment.pdf")
+
+# (2) Sensory groups first, the rest by Final_Score
+plot_enrichment(
+    order_by_score(enrich_df),
+    f"{folder}/Figure_05_Supplementary_Modality-Enrichment-Score-Ordered.pdf")
 
 #------------------------------------------------------------------------------
 # t-SNEs

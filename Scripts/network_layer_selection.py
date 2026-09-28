@@ -393,9 +393,48 @@ layer_matrix.to_parquet(f"{folder}/Layer_Connectivity-Matrix.parquet",
                         engine = "pyarrow")
 
 #--------------------------------------
+# LAYER-TO-LAYER OUTGOING FRACTION: RELATIVE HEMISPHERE
+layer_conn_df = conn_df.groupby(["Layer_pre", "Hemisphere_pre", "Layer_post", "Hemisphere_post"])["weight"].sum().reset_index()
+# Whether or not both hemispheres are the same
+layer_conn_df["Direction"] = layer_conn_df["Hemisphere_pre"] == layer_conn_df["Hemisphere_post"]
+# Replace True with Ipsi and False with Contra
+layer_conn_df["Direction"] = layer_conn_df["Direction"].replace({True: "Ipsi", False: "Contra"})
+# Outgoing fraction: normalize by each source layer-hemisphere's total output
+layer_conn_df["norm_weight"] = layer_conn_df["weight"] / (layer_conn_df.groupby(["Layer_pre", "Hemisphere_pre"])["weight"].transform("sum") + 1e-12)
+
+# Average over hemispheres
+layer_conn_df = layer_conn_df.groupby(["Layer_pre", "Layer_post", "Direction"])["norm_weight"].mean().reset_index()
+
+# Correcting the Names
+layer_conn_df["Layer_pre"] = layer_conn_df["Layer_pre"].astype(str).str.zfill(2)
+layer_conn_df["Layer_post"] = layer_conn_df["Direction"] + "_" + layer_conn_df["Layer_post"].astype(str).str.zfill(2)
+
+# Matrix
+dir_matrix = layer_conn_df.pivot_table(index   = "Layer_pre",
+                                       columns = "Layer_post",
+                                       values  = "norm_weight",
+                                       aggfunc = "sum",
+                                       fill_value = 0)
+
+# Ipsilateral ordered first in columns
+dir_order = [f"{d}_{l:02d}" for d in ["Ipsi", "Contra"] for l in range(11)]
+dir_matrix = dir_matrix[dir_order]
+
+# Just making it ipsilateral vs contralateral
+ic_matrix = layer_conn_df.pivot_table(index   = "Layer_pre",
+                                      columns = "Direction",
+                                      values  = "norm_weight",
+                                      aggfunc = "sum",
+                                      fill_value = 0)
+# Reorder
+ic_matrix = ic_matrix[["Ipsi", "Contra"]]
+
+#--------------------------------------
 # Plot: Panel A = Stacked Bar, Panel B = Hemisphere Heatmap
-fig, ax = plt.subplots(figsize = (8.5, 3), ncols = 2, 
-                       gridspec_kw = {"width_ratios" : [1, 1.4]})
+fig, ax = plt.subplots(figsize = (8.5, 9),
+                       ncols = 2,
+                       nrows = 3,
+                       gridspec_kw = {"width_ratios" : [1, 1.4], "height_ratios" : [1, 0.5, 0.5]})
 
 plt.subplots_adjust(wspace = 0.75)
 
@@ -408,7 +447,7 @@ right_fb = ff_fb_pivot.loc[ff_fb_pivot["Hemisphere"] == "Right"].sort_values("La
 bottom_ff = np.zeros(len(right_fb))
 
 for et in ["Feedforward", "Lateral", "Feedback"]:
-    ax[0].bar(right_fb["Layer"], right_fb[f"{et}_Frac"],
+    ax[0, 0].bar(right_fb["Layer"], right_fb[f"{et}_Frac"],
               bottom = bottom_ff,
               color  = edge_cmap[et],
               label  = et,
@@ -417,13 +456,13 @@ for et in ["Feedforward", "Lateral", "Feedback"]:
               width  = 0.8)
     bottom_ff += right_fb[f"{et}_Frac"].values
 
-ax[0].set_xlabel("Layer", fontsize = label_fontsize, labelpad = 5)
-ax[0].set_ylabel("Fraction of Output", fontsize = label_fontsize, labelpad = 5)
-ax[0].legend(fontsize = tick_fontsize, loc = "upper left",
-             bbox_to_anchor = (1.01, 1.01))
-ax[0].set_ylim(0, 1)
+ax[0, 0].set_xlabel("Layer", fontsize = label_fontsize, labelpad = 5)
+ax[0, 0].set_ylabel("Fraction of Output", fontsize = label_fontsize, labelpad = 5)
+ax[0, 0].legend(fontsize = tick_fontsize, loc = "upper left",
+                bbox_to_anchor = (1.01, 1.01))
+ax[0, 0].set_ylim(0, 1)
 # Labels
-ax[0].set_xticks(np.arange(0, 11), np.arange(0, 11))
+ax[0, 0].set_xticks(np.arange(0, 11), np.arange(0, 11))
 
 # Panel B: Hemisphere-separated heatmap
 sns.heatmap(layer_matrix,
@@ -432,29 +471,83 @@ sns.heatmap(layer_matrix,
                              vmax = layer_matrix.values.max()),
             square = True,
             linewidths = 0.3,
-            ax = ax[1],
+            ax = ax[0, 1],
             cbar_kws = {"label"  : "Connection Weight",
                         "shrink" : 0.6,
                         "aspect" : 15},
             xticklabels = True,
             yticklabels = True)
-ax[1].set_xlabel("PostSynaptic Layer", fontsize = label_fontsize, labelpad = 5)
-ax[1].set_ylabel("PreSynaptic Layer", fontsize = label_fontsize, labelpad = 5)
-ax[1].tick_params(labelsize = tick_fontsize - 1)
-plt.setp(ax[1].get_xticklabels(), rotation = 90)
-plt.setp(ax[1].get_yticklabels(), rotation = 0)
+ax[0, 1].set_xlabel("PostSynaptic Layer", fontsize = label_fontsize, labelpad = 5)
+ax[0, 1].set_ylabel("PreSynaptic Layer", fontsize = label_fontsize, labelpad = 5)
+ax[0, 1].tick_params(labelsize = tick_fontsize - 1)
+plt.setp(ax[0, 1].get_xticklabels(), rotation = 90)
+plt.setp(ax[0, 1].get_yticklabels(), rotation = 0)
 
 # Colorbar font sizes
-cbar = ax[1].collections[0].colorbar
+cbar = ax[0, 1].collections[0].colorbar
 cbar.ax.tick_params(labelsize = tick_fontsize - 1)
 cbar.set_label("Connection Weight", fontsize = tick_fontsize - 1)
 
 # Add a slightly thicked dividing line across hemipheres
-ax[1].axhline(y = 11, color = "white", linewidth = 1.5)
-ax[1].axvline(x = 11, color = "white", linewidth = 1.5)
+ax[0, 1].axhline(y = 11, color = "white", linewidth = 1.5)
+ax[0, 1].axvline(x = 11, color = "white", linewidth = 1.5)
 
+# Panel Bii: Relative Hemisphere  
+sns.heatmap(dir_matrix,
+            cmap = "magma",
+            vmin = 0,
+            vmax = 0.3,
+            square = True,
+            linewidths = 0.3,
+            ax = ax[1, 1],
+            cbar_kws = {"label"  : "Output Fraction",
+                        "shrink" : 0.25,
+                        "aspect" : 7,
+                        "extend" : "max"},
+            xticklabels = True,
+            yticklabels = True)
+
+# Colorbar font sizes
+cbar = ax[1, 1].collections[0].colorbar
+cbar.ax.tick_params(labelsize = tick_fontsize - 1)
+cbar.set_label("Output Fraction", fontsize = tick_fontsize - 1)
+
+# Vertical Line
+ax[1, 1].axvline(x = 11, color = "white", linewidth = 1.5)
+
+# Labels
+ax[1, 1].set_xlabel("PostSynaptic Layer", fontsize = label_fontsize, labelpad = 5)
+ax[1, 1].set_ylabel("PreSynaptic Layer", fontsize = label_fontsize, labelpad = 5)
+
+# Panel Biii: Relative Hemisphere  
+sns.heatmap(ic_matrix.T,
+            cmap = "magma",
+            vmin = 0,
+            vmax = 1,
+            square = True,
+            linewidths = 0.3,
+            annot = True,
+            fmt   = ".2f",
+            annot_kws = {"size" :  4},
+            ax = ax[2, 1],
+            cbar_kws = {"label"  : "Output Fraction",
+                        "shrink" : 0.2,
+                        "aspect" : 7},
+            xticklabels = True,
+            yticklabels = True)
+
+# Colorbar font sizes
+cbar = ax[2, 1].collections[0].colorbar
+cbar.ax.tick_params(labelsize = tick_fontsize - 1)
+cbar.set_label("Output Fraction", fontsize = tick_fontsize - 1)
+
+# Labels
+ax[2, 1].set_ylabel("", fontsize = label_fontsize, labelpad = 5)
+ax[2, 1].set_xlabel("PreSynaptic Layer", fontsize = label_fontsize, labelpad = 5)
+
+#--------------------------------------
 # Format
-for a in ax:
+for a in ax.flatten():
     a.tick_params(axis = "both",
                   which = "major",
                   labelsize = tick_fontsize,
@@ -463,10 +556,24 @@ for a in ax:
                   pad = 1.5)
     sns.despine(ax = a, left = False, bottom = False)
 
+# Turn Off
+ax[1, 0].axis("off")
+ax[2, 0].axis("off")
+
+# Aspect
+ax[0, 0].set_aspect(13.5, adjustable = "box")
+
+# Args
+label_kwargs = dict(fontsize = 16, va = "bottom", ha = "right")
+
 # Panel Labels
-place_panel_label(fig, ax[0], "A", shx = -0.04, shy = 0.06,
+place_panel_label(fig, ax[0, 0], "A", shx = -0.04, shy = 0,
                   label_kwargs = label_kwargs)
-place_panel_label(fig, ax[1], "B", shx = -0.07, shy = 0.06,
+place_panel_label(fig, ax[0, 1], "Bi", shx = -0.07, shy = 0,
+                  label_kwargs = label_kwargs)
+place_panel_label(fig, ax[1, 1], "ii", shx = -0.07, shy = 0,
+                  label_kwargs = label_kwargs)
+place_panel_label(fig, ax[2, 1], "iii", shx = -0.07, shy = 0,
                   label_kwargs = label_kwargs)
 
 # Save

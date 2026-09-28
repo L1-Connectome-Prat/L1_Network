@@ -42,7 +42,7 @@ group_dict = dict(zip(neuron_df.bodyId, neuron_df.ConnectivityGroup))
 
 #------------------------------------------------------------------------------
 # Read in the lineage colors
-with open(f"{home}/L1_Lineages/Tools/Lineage_Colors.pkl", "rb") as f:
+with open(f"{home}/L1_Lineages/Data_Helpers/Lineage_Colors.pkl", "rb") as f:
     lineage_colors = pkl.load(f)
 lineage_colors["Unbound"] = (0.5, 0.5, 0.5)
 # Map the colors

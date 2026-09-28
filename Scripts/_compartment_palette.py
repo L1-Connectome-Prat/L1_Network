@@ -39,10 +39,10 @@ COMP_RGB["LAL-VMC"] = (_lal + _vmc) / 2
 
 COMP_ORDER = ["AL", "TR", "LON",
               "MB-CA", "MB", "MBE",
-              "IPA", "IPLM", "IPP",
               "SMP", "SMPal",
+              "IPA", "IPLM", "IPP",
               "SLP",
-              "LAL", "VMC", "LAL-VMC",
+              "LAL", "LAL-VMC", "VMC",
               "VLP",
               "SEZ-VNC",
               "Mixed"]

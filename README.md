@@ -55,6 +55,7 @@ Shared utilities:
 | Scaled Distance | `−log10(PPR_score + ε)` | Topological depth (synaptic hops) from source |
 | Primary Modality | `argmax(Drive_k)` | Dominant sensory input |
 | Integration Index | `−Σ pₖ log pₖ / log K` | Normalized Shannon entropy (0 = unimodal, 1 = fully mixed) |
+| Integration Drive | `Integration Index · log10(Drive_all + 1)` | Multimodal bandwidth — mixing weighted by total signal volume (high only when well-mixed *and* high-throughput) |
 | Final Score | `Σ pₖ · Dₖ` | Proportion-weighted topological depth |
 | Modality Enrichment | `(pₖ − p_expected) / p_expected` | Fold-change vs. non-sensory baseline |
 | Flow Ratio | `(w_out − w_in) / (w_out + w_in)` | Net sender (+) vs. receiver (−) |
@@ -84,12 +85,26 @@ L1_Network/
 
 ## Reproducing the Variability Outputs
 
-`Analysis_Outputs/Variability/**/*.npz` are gitignored — they're large
-shuffle-iteration arrays that anyone can regenerate from the script:
+`Analysis_Outputs/Variability/**/*.npz` are committed so the Figure 4
+notebook runs without recomputation. They're large shuffle-iteration
+arrays (~180 MB total), so avoid re-committing them unless results change.
+All randomness is seeded, so given the same input connectivity and
+neuron-information tables they can be regenerated exactly from the script
+(~40 min on 32 cores):
 
 ```bash
 python Scripts/connectivity_variability.py --level both --redo --n 10000
 ```
+
+**Pair counting.** Self-pairs (the diagonal) are always excluded, but the
+within-vs-across masks use the full off-diagonal block rather than one
+triangle, so every unique neuron pair enters twice, as (i, j) and (j, i).
+Because the similarity matrices are symmetric, all similarity means are
+unaffected; `Num_Within_Pairs` / `Num_Between_Pairs` in
+`pairs_index.parquet` are ordered-pair counts (2× the unique pairs). The
+across-group null is correspondingly ~√2 too narrow; re-running with an
+upper triangle (`np.triu(..., k = 1)`) left every p-value at 0 at both
+levels (z ≈ 62–69 vs. 90–99 as implemented), so conclusions are unchanged.
 
 ## Dependencies
 

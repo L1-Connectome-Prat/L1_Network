@@ -21,7 +21,7 @@ import navis
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
-from _compartment_palette import COMP_HEX, COMP_RGB, COMP_ORDER
+from Scripts._compartment_palette import COMP_HEX, COMP_RGB, COMP_ORDER
 
 #------------------------------------------------------------------------------
 # Config

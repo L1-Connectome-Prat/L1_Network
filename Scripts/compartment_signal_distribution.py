@@ -17,7 +17,7 @@ import seaborn as sns
 sns.set_style("ticks")
 from prats_helpers import place_panel_label
 
-from _compartment_palette import COMP_HEX, COMP_RGB, COMP_ORDER
+from Scripts._compartment_palette import COMP_HEX, COMP_RGB, COMP_ORDER
 
 #------------------------------------------------------------------------------
 # Config
