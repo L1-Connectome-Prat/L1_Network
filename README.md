@@ -41,7 +41,7 @@ Scripts are intended to run sequentially; each builds on prior outputs.
 | 8 | `network_layer_selection.py` | Bins groups into k discrete layers via Jenks natural breaks on Final_Score; selects k=10 (+ L0 sources) by silhouette / max-layer-size / within-layer CV. Also computes feedforward / feedback / lateral weight per layer. |
 | 9 | `network_layer_connectivity.py` | Anatomical layered network diagram: nodes coloured by compartment, sized by neuron count, edges weighted by normalized output. Whole-network overview + per-layer decomposition. |
 | 10 | `compartment_signal_distribution.py` | Per-compartment heatmap of layer membership and per-compartment distributions of layer / Integration_Drive / Final_Score. |
-| 11 | `viz/export_viewer_data.py` | Bundle layer assignments + signal-flow metrics + group positions + connectivity into `docs/viewer_data.json`, fetched at load time by `docs/index.html` (served via GitHub Pages). |
+| 11 | `viz/export_viewer_data.py` | Bundle layer assignments + signal-flow metrics + group positions + connectivity into `docs/viewer_data.js`, loaded by `docs/index.html` via a `<script>` tag so the viewer works both on GitHub Pages and when opened directly from disk. |
 
 Shared utilities:
 - `_compartment_palette.py` — compartment colour scheme (`COMP_HEX`,

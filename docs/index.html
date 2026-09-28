@@ -356,9 +356,11 @@ body.light #panel::-webkit-scrollbar-thumb { background: #d0d3dd; border-radius:
   <div id="legend"></div>
 </div>
 
+<!-- Data is loaded as a script (not fetched) so the viewer also works when
+     index.html is opened directly from disk (file://). -->
+<script src="viewer_data.js"></script>
 <script>
 // ── Data ────────────────────────────────────────────────────────────────────
-let DATA = null;
 
 // ── Constants ───────────────────────────────────────────────────────────────
 // Compartment palette (mirrors Scripts/network_layer_connectivity_comp.py).
@@ -443,9 +445,14 @@ const themeBtn     = document.getElementById('theme-toggle');
 
 // ── Init ────────────────────────────────────────────────────────────────────
 function init() {
-  const d = typeof INLINE_DATA !== 'undefined' ? INLINE_DATA : DATA;
+  const d = typeof INLINE_DATA !== 'undefined' ? INLINE_DATA : null;
   if (!d) {
-    fetch('viewer_data.json').then(r => r.json()).then(j => { DATA = j; init(); });
+    const msg = document.createElement('div');
+    msg.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;' +
+                        'justify-content:center;padding:24px;text-align:center;font-size:13px;';
+    msg.textContent = 'Could not load viewer_data.js. Regenerate it with ' +
+                      'python Scripts/viz/export_viewer_data.py';
+    document.getElementById('canvas-container').appendChild(msg);
     return;
   }
 
